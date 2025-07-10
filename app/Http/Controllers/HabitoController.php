@@ -12,8 +12,8 @@ class HabitoController extends Controller
     public function index()
     {
         $habitos = Habito::where('user_id', Auth::id())
-                        ->orderBy('fecha', 'desc')
-                        ->get();
+            ->orderBy('fecha', 'desc')
+            ->get();
 
         return view('habitos.index', compact('habitos'));
     }
@@ -78,48 +78,72 @@ class HabitoController extends Controller
         $habito->delete();
 
         return redirect()->route('habitos.index')->with('success', 'Hábito eliminado.');
-    }    public function reporte()
-    {
-        $inicioSemana = Carbon::now()->startOfWeek();
-        $finSemana = Carbon::now()->endOfWeek();
-
-        $habitos = Habito::where('user_id', Auth::id())
-                        ->whereBetween('fecha', [$inicioSemana, $finSemana])
-                        ->orderBy('fecha')
-                        ->get();
-
-        // Datos para Chart.js
-        $labels = [];
-        $agua = [];
-        $sueno = [];
-        $ejercicio = [];
-
-        foreach ($habitos as $habito) {
-            $labels[] = Carbon::parse($habito->fecha)->locale('es')->isoFormat('dddd D');
-            $agua[] = (float) ($habito->agua ?? 0);
-            $sueno[] = (float) ($habito->sueno ?? 0);
-            $ejercicio[] = (float) ($habito->actividad_fisica ?? 0);
-        }
-
-        // Si no hay datos, crear datos de ejemplo para mostrar el gráfico
-        if (empty($labels)) {
-            $diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-            $labels = $diasSemana;
-            $agua = array_fill(0, 7, 0);
-            $sueno = array_fill(0, 7, 0);
-            $ejercicio = array_fill(0, 7, 0);
-        }
-
-        return view('habitos.reporte', compact('habitos', 'labels', 'agua', 'sueno', 'ejercicio'));
     }
-
+    
+public function reporte(Request $request)
+{
+    $periodo = $request->get('periodo', 'semana');
+    $fecha = $request->get('fecha', now()->toDateString());
+    
+    $fechaBase = Carbon::parse($fecha);
+    
+    if ($periodo === 'semana') {
+        $fechaInicio = $fechaBase->startOfWeek();
+        $fechaFin = $fechaBase->copy()->endOfWeek();
+        $periodoTexto = "Semana del " . $fechaInicio->format('d/m/Y');
+    } else {
+        $fechaInicio = $fechaBase->startOfMonth();
+        $fechaFin = $fechaBase->copy()->endOfMonth();
+        $periodoTexto = $fechaBase->format('F Y');
+    }
+    
+    $habitos = Habito::where('user_id', Auth::id())
+        ->whereBetween('fecha', [$fechaInicio->toDateString(), $fechaFin->toDateString()])
+        ->orderBy('fecha')
+        ->get();
+    
+    $labels = [];
+    $agua = [];
+    $sueno = [];
+    $ejercicio = [];
+    
+    // Crear array con todas las fechas del período
+    $fechaActual = $fechaInicio->copy();
+    while ($fechaActual <= $fechaFin) {
+        $fechaStr = $fechaActual->toDateString();
+        $habito = $habitos->where('fecha', $fechaStr)->first();
+        
+        if ($periodo === 'semana') {
+            $labels[] = $fechaActual->format('d/m');
+        } else {
+            $labels[] = $fechaActual->format('d');
+        }
+        
+        $agua[] = $habito ? $habito->agua : 0;
+        $sueno[] = $habito ? $habito->sueno : 0;
+        $ejercicio[] = $habito ? $habito->actividad_fisica : 0;
+        
+        $fechaActual->addDay();
+    }
+    
+    return view('habitos.reporte', compact(
+        'habitos',
+        'labels',
+        'agua',
+        'sueno',
+        'ejercicio',
+        'periodoTexto',
+        'fechaInicio',
+        'fechaFin'
+    ));
+}
 
     public function recomendaciones()
     {
         $habitos = Habito::where('user_id', Auth::id())
-                        ->latest('fecha')
-                        ->take(7)
-                        ->get();
+            ->latest('fecha')
+            ->take(7)
+            ->get();
 
         $recomendaciones = [];
 
